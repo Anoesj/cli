@@ -170,7 +170,8 @@ export default defineCommand({
     }
 
     if (ctx.args['per-project']) {
-      if (useProjectReferences && tsConfigPath && supportsProjectReferences(tsConfig)) {
+      // Build mode only reads `tsconfig.json` in the root directory, not one found further up.
+      if (useProjectReferences && tsConfigPath === resolve(cwd, 'tsconfig.json') && supportsProjectReferences(tsConfig)) {
         process.exitCode = await typecheckPerProject(cwd, typechecker, resolveProjectReferences(tsConfigPath, tsConfig))
         return
       }

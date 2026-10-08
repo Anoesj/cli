@@ -256,12 +256,21 @@ describe('typecheck per project', () => {
     expect(exitCode).toBeFalsy()
   })
 
-  it('should resolve references relative to the tsconfig rather than the root directory', async () => {
+  it('should not split a tsconfig found above the root directory', async () => {
     const rootDir = join(cwd, 'app')
     await mkdir(rootDir)
 
-    await runTypecheck(['--per-project', `--cwd=${rootDir}`])
+    const { output } = await runTypecheck(['--per-project', '--build', `--cwd=${rootDir}`])
 
+    expect(output).toContain('Ignoring')
+    expect(tinyexec).toHaveBeenCalledTimes(1)
+    expect(tinyexec).toHaveBeenCalledWith(expect.anything(), ['-b', '--noEmit'], expect.anything())
+  })
+
+  it('should split with an explicit `--build`', async () => {
+    await runTypecheck(['--per-project', '--build'])
+
+    expect(tinyexec).toHaveBeenCalledTimes(3)
     expect((tinyexec.mock.calls[0] as unknown[])[1]).toEqual(['-p', join(cwd, '.nuxt/tsconfig.app.json'), '--noEmit'])
   })
 

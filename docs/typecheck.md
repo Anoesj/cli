@@ -47,7 +47,7 @@ The `typecheck` command runs [`vue-tsc`](https://github.com/vuejs/language-tools
 
 A solution-style `tsconfig.json` (one that only lists `references`) is type-checked in build mode automatically. `--build` forces it, and `--no-build` turns it off.
 
-Build mode checks every project reference in a single process, which holds on to the memory of each project until the end. On machines with little memory, `--per-project` checks each reference in its own process instead (`vue-tsc -p <reference> --noEmit`, or `golar tsc -p <reference> --noEmit`), one after another, so peak memory stays at that of the largest project. It keeps going after a failing project, so one run reports every error. Without memory pressure this is usually a little slower, as types shared between projects are loaded once per process.
+Build mode checks every project reference in a single process, which holds on to the memory of each project until the end. On machines with little memory, `--per-project` checks each reference in its own process instead (`vue-tsc -p <reference> --noEmit`, or `golar tsc -p <reference> --noEmit`), one after another, so peak memory stays at that of the largest project. It keeps going after a failing project, so one run reports every error. Without memory pressure this is usually a little slower, as types shared between projects are loaded once per process. It is meant for Nuxt's generated project configs: if a referenced project has `references` of its own, those are not built first.
 
 ::note
 This command sets `process.env.NODE_ENV` to `production`. To override, define `NODE_ENV` in a [`.env`](/docs/directory-structure/env) file or as a command-line argument.
