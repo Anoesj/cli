@@ -61,35 +61,34 @@ const LOG_START_RE = /^(?:\[[^\]\s]+\]\s+| (?:FATAL|ERROR|WARN) {2}|[\u2139\u271
  *
  * Only a line that opens the way a log does starts a new one. Anything else,
  * blank lines included, belongs to the log above it: a stack, a code frame or
- * a second paragraph is part of the error it follows.
+ * a second paragraph is part of the error it follows. What was printed is kept
+ * line for line, while the message reads a run of blank lines as one.
  */
 function splitLogs(chunk: string): Array<{ message: string, rendered: string }> {
   const logs: Array<{ plain: string[], raw: string[] }> = []
   let gap = false
-  // Styling left on an otherwise empty line, usually the reset for the line above.
-  let carried = ''
-  for (const raw of chunk.split('\n')) {
+  // Blank lines ahead of the first log, kept for what it is printed as.
+  let leading = ''
+  for (const raw of chunk.replace(/\n$/, '').split('\n')) {
     const plain = stripAnsi(raw)
+    const last = logs.at(-1)
     if (!plain.trim()) {
-      const last = logs.at(-1)
       if (last) {
-        last.raw[last.raw.length - 1] += raw.trim()
+        last.raw.push(raw)
         gap = true
       }
       else {
-        carried += raw.trim()
+        leading += `${raw}\n`
       }
       continue
     }
-    const last = logs.at(-1)
     if (!last || LOG_START_RE.test(plain)) {
-      logs.push({ plain: [plain], raw: [carried + raw] })
-      carried = ''
+      logs.push({ plain: [plain], raw: [leading + raw] })
+      leading = ''
     }
     else {
       if (gap) {
         last.plain.push('')
-        last.raw.push('')
       }
       last.plain.push(plain)
       last.raw.push(raw)

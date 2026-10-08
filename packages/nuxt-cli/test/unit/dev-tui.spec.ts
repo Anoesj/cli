@@ -3307,6 +3307,20 @@ describe('request failures on the panel', () => {
     })
   })
 
+  it('should keep the blank lines of what a split log was printed as', async () => {
+    await withPanel(async (_ui, _settle, session) => {
+      const flush = () => new Promise(resolve => setImmediate(() => setImmediate(resolve)))
+      const first = '\n WARN  first printed warning\n\n\n  with a detail\n\n'
+      const second = '[tagged] ✔ second printed log\n'
+      process.stdout.write(first + second)
+      await flush()
+
+      const seen = session.events.recent(50).filter(event => event.message.includes('printed'))
+      expect(seen.map(event => event.rendered)).toEqual([first, second])
+      expect(seen[0]!.message).toBe('first printed warning\n\n  with a detail')
+    })
+  })
+
   it('should record an app log the CLI serves itself once', async () => {
     await withPanel(async (ui, _settle, session) => {
       await logInProcess(ui, 'hello from the app')
