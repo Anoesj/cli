@@ -175,7 +175,7 @@ export default defineCommand({
         process.exitCode = await typecheckPerProject(cwd, typechecker, resolveProjectReferences(tsConfigPath, tsConfig))
         return
       }
-      logger.warn(`Ignoring ${styleText('cyan', '--per-project')}: it needs build mode and a solution-style ${styleText('cyan', 'tsconfig.json')} with project references to split.`)
+      logger.warn(`Ignoring ${styleText('cyan', '--per-project')}: it needs build mode and a ${styleText('cyan', 'tsconfig.json')} at the root of your project that only lists project references.`)
     }
 
     const start = Date.now()
