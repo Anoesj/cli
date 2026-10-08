@@ -720,6 +720,18 @@ describe('dev event log', () => {
     expect(recovered!.message).toBe(message)
   })
 
+  it('recovers severity and the tag from a badge printed behind a tag', () => {
+    const log = new DevEventLog()
+    log.push(event({ level: 2, type: 'log', message: '[@nuxt/robots]  WARN  You have disallowed robots' }))
+    expect(log.recent(1)[0]).toMatchObject({ level: 1, type: 'warn', tag: '@nuxt/robots', message: 'You have disallowed robots' })
+  })
+
+  it('leaves a tagged sentence that only starts like a badge alone', () => {
+    const log = new DevEventLog()
+    log.push(event({ level: 2, type: 'log', message: '[vite] error while updating dependencies' }))
+    expect(log.recent(1)[0]).toMatchObject({ level: 2, message: '[vite] error while updating dependencies' })
+  })
+
   it('treats a printed error badge as an error', () => {
     const log = new DevEventLog()
     log.push(event({ level: 2, type: 'log', message: 'ERROR: something broke' }))
@@ -3259,6 +3271,41 @@ describe('request failures on the panel', () => {
       consola.level = level
     }
   }
+
+  it('should record logs printed in the same tick as separate entries', async () => {
+    await withPanel(async (_ui, _settle, session) => {
+      const flush = () => new Promise(resolve => setImmediate(() => setImmediate(resolve)))
+      process.stdout.write('[nuxt:icon] ✔ Nuxt Icon loaded local collection\n')
+      process.stdout.write('\n WARN  Nuxt Icon serverBundle is deprecated\n\n')
+      process.stdout.write('\n[@nuxt/robots]  WARN  You have disallowed robots\n\n')
+      process.stdout.write('[@nuxtjs/mcp-toolkit] ℹ Cursor detected\n[@nuxtjs/mcp-toolkit] ✔ /mcp enabled\n')
+      await flush()
+
+      const seen = session.events.recent(50).filter(event => /Nuxt Icon|robots|Cursor|mcp/.test(event.message))
+      expect(seen.map(event => event.message)).toEqual([
+        '[nuxt:icon] ✔ Nuxt Icon loaded local collection',
+        'Nuxt Icon serverBundle is deprecated',
+        'You have disallowed robots',
+        '[@nuxtjs/mcp-toolkit] ℹ Cursor detected',
+        '[@nuxtjs/mcp-toolkit] ✔ /mcp enabled',
+      ])
+      expect(seen.map(event => event.level)).toEqual([2, 1, 1, 2, 2])
+      expect(seen[2]!.tag).toBe('@nuxt/robots')
+    })
+  })
+
+  it('should keep a stack and what follows it with the error printed above', async () => {
+    await withPanel(async (_ui, _settle, session) => {
+      const flush = () => new Promise(resolve => setImmediate(() => setImmediate(resolve)))
+      process.stdout.write('\n ERROR  failed to resolve import\n\n    at load (file.ts:1:1)\n    at run (file.ts:2:1)\n\nIs the package installed?\n\n')
+      await flush()
+
+      const seen = session.events.recent(50).filter(event => event.message.includes('failed to resolve import'))
+      expect(seen).toHaveLength(1)
+      expect(seen[0]!.message).toBe('failed to resolve import\n\n    at load (file.ts:1:1)\n    at run (file.ts:2:1)\n\nIs the package installed?')
+      expect(seen[0]!.level).toBe(0)
+    })
+  })
 
   it('should record an app log the CLI serves itself once', async () => {
     await withPanel(async (ui, _settle, session) => {

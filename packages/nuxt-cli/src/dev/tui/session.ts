@@ -50,6 +50,55 @@ function settleRewrites(plain: string): string {
     .join('\n')
 }
 
+/**
+ * How a printed log opens: a `[tag]`, the badge consola puts on a warning or
+ * an error, or one of its icons.
+ */
+const LOG_START_RE = /^(?:\[[^\]\s]+\]\s+| (?:FATAL|ERROR|WARN) {2}|[\u2139\u2714\u2716\u26A0\u2699\u25D0] )/
+
+/**
+ * The separate logs in a run of printed output.
+ *
+ * Only a line that opens the way a log does starts a new one. Anything else,
+ * blank lines included, belongs to the log above it: a stack, a code frame or
+ * a second paragraph is part of the error it follows.
+ */
+function splitLogs(chunk: string): Array<{ message: string, rendered: string }> {
+  const logs: Array<{ plain: string[], raw: string[] }> = []
+  let gap = false
+  // Styling left on an otherwise empty line, usually the reset for the line above.
+  let carried = ''
+  for (const raw of chunk.split('\n')) {
+    const plain = stripAnsi(raw)
+    if (!plain.trim()) {
+      const last = logs.at(-1)
+      if (last) {
+        last.raw[last.raw.length - 1] += raw.trim()
+        gap = true
+      }
+      else {
+        carried += raw.trim()
+      }
+      continue
+    }
+    const last = logs.at(-1)
+    if (!last || LOG_START_RE.test(plain)) {
+      logs.push({ plain: [plain], raw: [carried + raw] })
+      carried = ''
+    }
+    else {
+      if (gap) {
+        last.plain.push('')
+        last.raw.push('')
+      }
+      last.plain.push(plain)
+      last.raw.push(raw)
+    }
+    gap = false
+  }
+  return logs.map(log => ({ message: log.plain.join('\n'), rendered: `${log.raw.join('\n')}\n` }))
+}
+
 export interface DevUISession {
   surface: PanelSurface
   events: DevEventLog
@@ -291,11 +340,11 @@ export function beginDevUI(options: PanelStartOptions & { start?: PanelStart } =
   }
 
   /**
-   * Fold everything captured since the last log event into one entry.
+   * Record everything captured since the last log event.
    *
    * A single log can reach the stream as several writes, so chunks are
-   * accumulated and only split apart where a new log event begins or the tick
-   * ends.
+   * accumulated until a new log event begins or the tick ends, and only then
+   * split into the logs they hold.
    */
   function flushCapture(): void {
     const chunk = buffered
@@ -329,21 +378,31 @@ export function beginDevUI(options: PanelStartOptions & { start?: PanelStart } =
       return
     }
     const request = currentRequest()
-    const event: DevLogEvent = {
-      time: Date.now(),
-      level: 2,
-      type: 'log',
-      message,
-      rendered: chunk,
-      source: request ? 'runtime' : 'build',
-      request: request?.label,
-      requestId: request?.id,
+    const record = (message: string, rendered: string) => {
+      const event: DevLogEvent = {
+        time: Date.now(),
+        level: 2,
+        type: 'log',
+        message,
+        rendered,
+        source: request ? 'runtime' : 'build',
+        request: request?.label,
+        requestId: request?.id,
+      }
+      return events.push(event, { route: 'output' }) === event ? event : undefined
     }
-    const stored = events.push(event, { route: 'output' })
-    // Only an entry of this run's own may be rewritten by its later frames:
-    // `push` can merge into an existing structured event, whose message is a
-    // real log that has to survive.
-    transient = rewriting && stored === event ? stored : undefined
+    if (rewriting) {
+      // Only an entry of this run's own may be rewritten by its later frames:
+      // `push` can merge into an existing structured event, whose message is a
+      // real log that has to survive.
+      transient = record(message, chunk)
+      return
+    }
+    transient = undefined
+    // Several tools can print within one tick, and each log is its own entry.
+    for (const log of splitLogs(chunk)) {
+      record(log.message, log.rendered)
+    }
   }
 
   // Deferred: a forwarded log arrives before its printed form.

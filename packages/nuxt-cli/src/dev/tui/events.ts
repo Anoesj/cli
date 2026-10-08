@@ -52,6 +52,12 @@ const BADGES: Array<{ pattern: RegExp, level: number, type: string }> = [
   { pattern: /^\s*warn(?:ing)?\b[\s:]*/i, level: 1, type: 'warn' },
 ]
 
+/** A `[tag]` printed ahead of a message. */
+const TAG_PREFIX_RE = /^\s*\[([^\]\s]+)\]\s+/
+
+/** A level badge the way consola prints one, padded on both sides. */
+const PRINTED_BADGE_RE = /^(?:FATAL|ERROR|WARN) {2}/
+
 /**
  * Text as it reads, so a difference in padding cannot make two logs distinct.
  * Backticks go too: a structured report keeps its markdown quoting while the
@@ -136,11 +142,21 @@ function classify(event: DevLogEvent): DevLogEvent {
     return event
   }
   const plain = stripAnsi(event.message)
+  // A tagged logger prints its tag ahead of the badge. Only the badge as it
+  // is printed counts there: `[vite] error while …` is a sentence, not a badge.
+  const prefix = event.tag ? null : plain.match(TAG_PREFIX_RE)
+  const tagged = prefix && PRINTED_BADGE_RE.test(plain.slice(prefix[0].length)) ? prefix : null
   for (const { pattern, level, type } of BADGES) {
     const match = plain.match(pattern)
     if (match) {
       const message = plain === event.message ? event.message.slice(match[0].length) : event.message
       return { ...event, level, type, message }
+    }
+    const behindTag = tagged && plain.slice(tagged[0].length).match(pattern)
+    if (behindTag) {
+      return plain === event.message
+        ? { ...event, level, type, tag: tagged[1], message: plain.slice(tagged[0].length + behindTag[0].length) }
+        : { ...event, level, type }
     }
   }
   return event
